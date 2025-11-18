@@ -238,8 +238,7 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
               <div className="p-3 bg-muted/20 rounded-lg">
                 <p className="text-xs text-muted-foreground mb-1">Message preview:</p>
                 <p className="text-sm italic">
-                  "Hello! I found your profile on PulseConnect and I'm looking for {donor.bloodGroup} blood. 
-                  Could you please help? Thank you!"
+                "Greetings! Your PulseConnect profile indicates you're a {donor.bloodGroup} blood donor. We are currently in need of this blood type. If possible, could you support us? Thank you."
                 </p>
               </div>
 

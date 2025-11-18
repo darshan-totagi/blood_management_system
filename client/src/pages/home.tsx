@@ -65,6 +65,24 @@ export default function Home() {
     <div className="min-h-screen bg-background" data-testid="page-home">
       <Header />
       
+      {/* Resume Donor Registration Banner */}
+{!donor && (
+  <div className="bg-primary/10 border border-primary/20 text-primary px-4 py-3 rounded-xl flex items-center justify-between mt-6 backdrop-blur-sm shadow-sm">
+    <div>
+      <h3 className="font-semibold text-lg flex items-center gap-2">
+        🩸 Complete Your Donor Profile
+      </h3>
+      <p className="text-sm text-primary/80 -mt-1">
+        Unlock credits, increase visibility & help save lives.
+      </p>
+    </div>
+
+    <Button asChild variant="secondary" className="font-semibold">
+      <Link href="/register-donor">Resume</Link>
+    </Button>
+  </div>
+)}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
