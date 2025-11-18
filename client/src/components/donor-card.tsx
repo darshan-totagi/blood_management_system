@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Heart, MapPin, Phone, Eye, Calendar, Award, User } from "lucide-react";
 import type { Donor } from "@shared/schema";
+import { Loader2 } from "lucide-react";
 
 interface DonorCardProps {
   donor: Donor & { distance: number };
@@ -148,9 +149,14 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
               handleContactClick();
             }}
             data-testid={`button-contact-${donor.id}`}
+            disabled={contactDonorMutation.isPending}
           >
-            <Phone size={14} className="mr-1" />
-            Contact
+            {contactDonorMutation.isPending ? (
+              <Loader2 size={14} className="mr-1 animate-spin" />
+            ) : (
+              <Phone size={14} className="mr-1" />
+            )}
+            {contactDonorMutation.isPending ? "Opening..." : "Contact"}
           </Button>
           
           <Dialog>
@@ -258,6 +264,11 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
                   disabled={contactDonorMutation.isPending}
                   data-testid={`button-confirm-contact-${donor.id}`}
                 >
+                  {contactDonorMutation.isPending ? (
+                    <Loader2 size={16} className="mr-2 animate-spin" />
+                  ) : (
+                    <Phone size={16} className="mr-2" />
+                  )}
                   {contactDonorMutation.isPending ? "Opening..." : "Open WhatsApp"}
                 </Button>
               </div>
