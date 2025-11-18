@@ -102,14 +102,22 @@ export default function FindDonors() {
         form.setValue("latitude", lat);
         form.setValue("longitude", lon);
         try {
-          const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${apiKey}`);
-          if (r.ok) {
-            const g = await r.json();
-            const addr = g.results?.[0]?.formatted_address;
-            form.setValue("address", addr || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-          } else {
-            form.setValue("address", `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+          let addr: string | null = null;
+          if (apiKey) {
+            const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${apiKey}`);
+            if (r.ok) {
+              const g = await r.json();
+              addr = g.results?.[0]?.formatted_address || null;
+            }
           }
+          if (!addr) {
+            const osm = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+            if (osm.ok) {
+              const j = await osm.json();
+              addr = j.display_name || null;
+            }
+          }
+          form.setValue("address", addr || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
         } catch {
           form.setValue("address", `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
         } finally {
