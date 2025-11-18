@@ -1,9 +1,9 @@
-import { GoogleMap, Marker, useLoadScript } from "@react-google-maps/api";
+import { GoogleMap, MarkerF, useLoadScript, OverlayView } from "@react-google-maps/api";
 import { useCallback, useEffect, useState } from "react";
 import type { Donor } from "@shared/schema";
 
 interface InteractiveMapProps {
-  center: [number, number] | string; // <-- NOW SUPPORTS CITY NAME
+  center: [number, number] | string;
   donors: (Donor & { distance: number })[];
   onDonorSelect: (donor: Donor) => void;
   selectedDonor?: Donor | null;
@@ -49,39 +49,63 @@ export default function InteractiveMap({
 
   const [resolvedCenter, setResolvedCenter] = useState<[number, number] | null>(null);
 
-  // AUTO-RESOLVE CENTER (city name → lat/lng)
+  // ⭐ Inject pulse animation CSS only once
   useEffect(() => {
-    async function resolveCenter() {
-      // Case 1: Center is a city name string
-      if (typeof center === "string") {
-        const loc = await geocodeCity(center);
-        if (loc) setResolvedCenter([loc.lat, loc.lng]);
-        else setResolvedCenter([17.385044, 78.486671]); // fallback
+    const style = document.createElement("style");
+    style.innerHTML = `
+      .pulse-dot {
+        width: 16px;
+        height: 16px;
+        background-color: #ef4444;
+        border-radius: 50%;
+        position: relative;
+        box-shadow: 0 0 10px rgba(239,68,68,0.6);
       }
 
-      // Case 2: Center is lat/lng array
-      else if (Array.isArray(center)) {
-        const lat = Number(center[0]);
-        const lng = Number(center[1]);
+      .pulse-dot::after {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        top: 0;
+        left: 0;
+        border-radius: 50%;
+        background-color: #ef4444;
+        opacity: 0.6;
+        animation: pulse 1.5s infinite ease-out;
+      }
 
-        if (!isNaN(lat) && !isNaN(lng)) {
-          setResolvedCenter([lat, lng]);
-        } else {
-          setResolvedCenter([17.385044, 78.486671]); // fallback
-        }
+      .pulse-selected {
+        transform: scale(1.4);
+      }
+
+      .pulse-selected::after {
+        animation-duration: 1s;
+      }
+
+      @keyframes pulse {
+        0%   { transform: scale(1); opacity: 0.7; }
+        70%  { transform: scale(2.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => document.head.removeChild(style);
+  }, []);
+
+  // AUTO-RESOLVE CENTER (city name → lat/lng or number array)
+  useEffect(() => {
+    async function resolve() {
+      if (typeof center === "string") {
+        const c = await geocodeCity(center);
+        if (c) setResolvedCenter([c.lat, c.lng]);
+      } else if (Array.isArray(center)) {
+        setResolvedCenter([Number(center[0]), Number(center[1])]);
       }
     }
-
-    resolveCenter();
+    resolve();
   }, [center]);
-
-  const onMapLoad = useCallback(
-    (map: google.maps.Map) => {
-      if (!resolvedCenter) return;
-      map.panTo({ lat: resolvedCenter[0], lng: resolvedCenter[1] });
-    },
-    [resolvedCenter]
-  );
 
   if (!isLoaded || !resolvedCenter) return <div>Loading map...</div>;
 
@@ -90,42 +114,46 @@ export default function InteractiveMap({
       mapContainerStyle={mapContainerStyle}
       zoom={13}
       center={{ lat: resolvedCenter[0], lng: resolvedCenter[1] }}
-      onLoad={onMapLoad}
       options={{
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: false,
       }}
     >
-      {/* User Location Marker */}
+
+      {/* USER LOCATION MARKER (blue dot) */}
       {showUserLocation && (
-        <Marker
+        <OverlayView
           position={{ lat: resolvedCenter[0], lng: resolvedCenter[1] }}
-          icon={{
-            url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
-          }}
-        />
+          mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+        >
+          <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
+        </OverlayView>
       )}
 
-      {/* Donor Markers */}
+      {/* DONOR MARKERS WITH ANIMATION */}
       {donors.map((donor) => {
         const lat = Number(donor.latitude);
         const lng = Number(donor.longitude);
-
         if (isNaN(lat) || isNaN(lng)) return null;
 
+        const isSelected = selectedDonor?.id === donor.id;
+
         return (
-          <Marker
+          <OverlayView
             key={donor.id}
             position={{ lat, lng }}
-            onClick={() => onDonorSelect(donor)}
-            icon={{
-              url:
-                selectedDonor?.id === donor.id
-                  ? "https://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-                  : "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-            }}
-          />
+            mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+          >
+            <div
+              className={
+                isSelected
+                  ? "pulse-dot pulse-selected cursor-pointer"
+                  : "pulse-dot cursor-pointer"
+              }
+              onClick={() => onDonorSelect(donor)}
+            />
+          </OverlayView>
         );
       })}
     </GoogleMap>
