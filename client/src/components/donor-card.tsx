@@ -6,8 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Heart, MapPin, Phone, Eye, Calendar, Award, User, CheckCircle } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import {
+  Heart,
+  MapPin,
+  Phone,
+  Eye,
+  CheckCircle,
+  Loader2,
+} from "lucide-react";
 import type { Donor } from "@shared/schema";
 
 interface DonorCardProps {
@@ -30,11 +36,9 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
 
   const calculateTimeSinceLastDonation = (date: string | null) => {
     if (!date) return "No previous donations";
-
     const donationDate = new Date(date);
     const now = new Date();
     const diffMonths = Math.floor((now.getTime() - donationDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
-
     if (diffMonths < 1) return "Less than a month ago";
     if (diffMonths === 1) return "1 month ago";
     return `${diffMonths} months ago`;
@@ -42,11 +46,11 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
 
   const availabilityStatus = useMemo(() => {
     if (!donor.isAvailable) return { text: "Unavailable", variant: "destructive" as const };
-
     if (!donor.lastDonationDate) return { text: "Available", variant: "default" as const };
 
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
     const lastDonation = new Date(donor.lastDonationDate);
 
     return lastDonation <= sixMonthsAgo
@@ -90,8 +94,16 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
         {/* Header */}
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-red-500/20 to-red-600/20">
-              <span className="font-bold text-red-600">{donor.bloodGroup}</span>
+            
+            {/* BLOOD GROUP + HEART ANIMATION */}
+            <div className="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center relative">
+              <Heart size={20} className="absolute left-1 top-1 text-red-500 animate-bounce-slow" />
+              <span
+                className="text-secondary font-bold relative z-10"
+                data-testid={`text-blood-group-${donor.id}`}
+              >
+                {donor.bloodGroup}
+              </span>
             </div>
 
             <div>
@@ -99,7 +111,6 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
                 {donor.fullName}
                 {isVerifiedDonor && <CheckCircle size={14} className="text-green-600" />}
               </h5>
-
               <div className="flex items-center text-sm text-muted-foreground">
                 <MapPin size={12} className="mr-1" />
                 {distance.toFixed(1)} km away
@@ -147,11 +158,7 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
             {contactDonorMutation.isPending ? "Opening..." : "Contact"}
           </Button>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <Button size="sm" variant="outline" onClick={(e) => e.stopPropagation()}>
             <Eye size={14} />
           </Button>
         </div>
