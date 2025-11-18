@@ -296,27 +296,6 @@ export default function FindDonors() {
         {/* Results */}
         {searchParams && (
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* Results Summary */}
-<div className="lg:col-span-3 mb-4">
-  <Card className="border-accent/20 shadow-sm">
-    <CardContent className="p-4 flex items-center justify-between">
-      <div>
-        <p className="text-sm text-muted-foreground">Matching Donors</p>
-        <h3 className="text-xl font-bold">{donorsWithDistance.length} found</h3>
-      </div>
-
-      {donorsWithDistance.length > 0 && (
-        <div className="text-right">
-          <p className="text-sm text-muted-foreground">Closest Donor</p>
-          <p className="text-lg font-semibold">
-            {Math.min(...donorsWithDistance.map(d => d.distance)).toFixed(1)} km away
-          </p>
-        </div>
-      )}
-    </CardContent>
-  </Card>
-</div>
-
             {/* Map Container */}
             <div className="lg:col-span-2">
               <Card>
@@ -377,35 +356,33 @@ export default function FindDonors() {
           </div>
         )}
         
-        
-       {/* Initial State (Enhanced) */}
-{!searchParams && (
-  <Card className="border-accent/20 shadow-sm">
-    <CardContent className="p-12 text-center">
-      <Search className="mx-auto mb-4 text-accent" size={64} />
-      <h3 className="text-2xl font-bold mb-2">Find Donors Near You</h3>
-      <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
-        Enter your blood group and location to find verified donors within your selected radius.
-      </p>
-
-      {/* Tips */}
-      <div className="grid md:grid-cols-3 gap-4 max-w-3xl mx-auto">
-        <div className="p-3 bg-muted/50 rounded-lg text-sm">
-          📍 <span className="font-semibold">Enable location</span> for best accuracy
-        </div>
-
-        <div className="p-3 bg-muted/50 rounded-lg text-sm">
-          🩸 <span className="font-semibold">Select exact blood group</span> for matching donors
-        </div>
-
-        <div className="p-3 bg-muted/50 rounded-lg text-sm">
-          🌐 <span className="font-semibold">Expand radius</span> if search returns few results
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-)}
-
+        {/* Initial State */}
+        {!searchParams && (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <Search className="mx-auto mb-4 text-muted-foreground" size={64} />
+              <h3 className="text-2xl font-semibold mb-4">Find Blood Donors Near You</h3>
+              <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
+                Enter your location and blood group requirements above to find available donors in your area. 
+                Our system will show you donors within your specified radius who match your criteria.
+              </p>
+              <div className="grid md:grid-cols-3 gap-4 max-w-3xl mx-auto text-sm">
+                <div className="flex items-center space-x-2">
+                  <MapPin className="text-primary" size={16} />
+                  <span>Location-based search</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Users className="text-secondary" size={16} />
+                  <span>Real-time availability</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Search className="text-accent" size={16} />
+                  <span>Instant WhatsApp contact</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
