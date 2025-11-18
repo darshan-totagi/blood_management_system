@@ -275,6 +275,27 @@ export default function FindDonors() {
         {/* Results */}
         {searchParams && (
           <div className="grid lg:grid-cols-3 gap-8">
+            {/* Results Summary */}
+<div className="lg:col-span-3 mb-4">
+  <Card className="border-accent/20 shadow-sm">
+    <CardContent className="p-4 flex items-center justify-between">
+      <div>
+        <p className="text-sm text-muted-foreground">Matching Donors</p>
+        <h3 className="text-xl font-bold">{donorsWithDistance.length} found</h3>
+      </div>
+
+      {donorsWithDistance.length > 0 && (
+        <div className="text-right">
+          <p className="text-sm text-muted-foreground">Closest Donor</p>
+          <p className="text-lg font-semibold">
+            {Math.min(...donorsWithDistance.map(d => d.distance)).toFixed(1)} km away
+          </p>
+        </div>
+      )}
+    </CardContent>
+  </Card>
+</div>
+
             {/* Map Container */}
             <div className="lg:col-span-2">
               <Card>
