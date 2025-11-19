@@ -138,9 +138,9 @@ export default function Profile() {
     },
   });
 
-  const getCurrentLocation = async () => {
+  const getCurrentLocation = () => {
     setIsGettingLocation(true);
-
+    
     if (!navigator.geolocation) {
       toast({
         title: "Error",
@@ -169,35 +169,22 @@ export default function Profile() {
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        form.setValue("latitude", lat);
-        form.setValue("longitude", lon);
-
-        try {
-          let addr: string | null = null;
-          if (apiKey) {
-            const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${apiKey}&language=en`);
-            if (r.ok) {
-              const g = await r.json();
-              addr = g.results?.[0]?.formatted_address || null;
+      (position) => {
+        form.setValue("latitude", position.coords.latitude);
+        form.setValue("longitude", position.coords.longitude);
+        
+        // Reverse geocoding to get address
+        fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.locality && data.principalSubdivision) {
+              form.setValue("address", `${data.locality}, ${data.principalSubdivision}, ${data.countryName}`);
             }
-          }
-          if (!addr) {
-            const osm = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&namedetails=1&accept-language=en`);
-            if (osm.ok) {
-              const j = await osm.json();
-              const a = j.address || {};
-              addr = (j.namedetails && j.namedetails['name:en']) || j.display_name || [a.road, a.neighbourhood, a.city || a.town || a.village, a.state, a.country].filter(Boolean).join(', ') || null;
-            }
-          }
-          form.setValue("address", addr || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-        } catch {
-          form.setValue("address", `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-        } finally {
-          setIsGettingLocation(false);
-        }
+          })
+          .catch(() => {
+            form.setValue("address", `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`);
+          })
+          .finally(() => setIsGettingLocation(false));
 
         toast({
           title: "Success",
@@ -205,22 +192,13 @@ export default function Profile() {
         });
       },
       (error) => {
-        const code = error && typeof error.code === "number" ? error.code : 0;
-        const msg = code === 1
-          ? "Location permission denied"
-          : code === 2
-          ? "Position unavailable"
-          : code === 3
-          ? "Location request timed out"
-          : "Failed to get your location. Please enter manually.";
         toast({
           title: "Error",
-          description: msg,
+          description: "Failed to get your location. Please enter manually.",
           variant: "destructive",
         });
         setIsGettingLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+      }
     );
   };
 
@@ -812,4 +790,4 @@ export default function Profile() {
       </div>
     </div>
   );
-}
+} 
