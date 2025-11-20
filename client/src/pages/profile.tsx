@@ -138,7 +138,7 @@ export default function Profile() {
     },
   });
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setIsGettingLocation(true);
     
     if (!navigator.geolocation) {
@@ -790,4 +790,4 @@ export default function Profile() {
       </div>
     </div>
   );
-} 
+}
