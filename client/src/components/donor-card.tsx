@@ -70,7 +70,12 @@ export default function DonorCard({ donor, distance, isSelected = false, onSelec
       return await response.json();
     },
     onSuccess: (data) => {
-      window.open(data.whatsappUrl, "_blank");
+      const digits = donor.whatsappNumber.replace(/[^\d]/g, "");
+      const appLink = `whatsapp://send?phone=${digits}&text=${encodeURIComponent(messagePreview)}`;
+      const webLink = `https://wa.me/${digits}?text=${encodeURIComponent(messagePreview)}`;
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const url = isMobile ? appLink : webLink;
+      window.open(url, "_blank");
       toast({ title: "WhatsApp Opened", description: "You can now chat with the donor." });
       setIsContactDialogOpen(false);
     },
