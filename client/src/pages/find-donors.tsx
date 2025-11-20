@@ -72,7 +72,7 @@ export default function FindDonors() {
     enabled: !!searchParams,
   });
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setIsGettingLocation(true);
     
     if (!navigator.geolocation) {
@@ -445,4 +445,4 @@ export default function FindDonors() {
       </div>
     </div>
   );
-} 
+}
