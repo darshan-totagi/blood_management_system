@@ -32,6 +32,13 @@ export default function FindDonors() {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [searchParams, setSearchParams] = useState<SearchFormData | null>(null);
   const [selectedDonor, setSelectedDonor] = useState<Donor | null>(null);
+  const [liveWatchId, setLiveWatchId] = useState<number | null>(null);
+  const [isLive, setIsLive] = useState(false);
+  useEffect(() => {
+    return () => {
+      if (liveWatchId !== null) navigator.geolocation.clearWatch(liveWatchId);
+    };
+  }, [liveWatchId]);
 
   const form = useForm<SearchFormData>({
     resolver: zodResolver(searchFormSchema),
@@ -65,7 +72,7 @@ export default function FindDonors() {
     enabled: !!searchParams,
   });
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setIsGettingLocation(true);
     
     if (!navigator.geolocation) {
@@ -77,6 +84,23 @@ export default function FindDonors() {
       setIsGettingLocation(false);
       return;
     }
+
+    try {
+      if ("permissions" in navigator) {
+        const p = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+        if (p.state === "denied") {
+          toast({
+            title: "Error",
+            description: "Location permission is blocked. Enable it in browser settings.",
+            variant: "destructive",
+          });
+          setIsGettingLocation(false);
+          return;
+        }
+      }
+    } catch {}
+
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -110,6 +134,54 @@ export default function FindDonors() {
         setIsGettingLocation(false);
       }
     );
+  };
+
+  const toggleLiveLocation = () => {
+    if (!navigator.geolocation) {
+      toast({ title: "Error", description: "Geolocation not supported", variant: "destructive" });
+      return;
+    }
+    if (liveWatchId !== null) {
+      navigator.geolocation.clearWatch(liveWatchId);
+      setLiveWatchId(null);
+      setIsLive(false);
+      return;
+    }
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+    const id = navigator.geolocation.watchPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        form.setValue("latitude", lat);
+        form.setValue("longitude", lon);
+        try {
+          let addr: string | null = null;
+          if (apiKey) {
+            const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${apiKey}&language=en`);
+            if (r.ok) {
+              const g = await r.json();
+              addr = g.results?.[0]?.formatted_address || null;
+            }
+          }
+          if (!addr) {
+            const osm = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&namedetails=1&accept-language=en`);
+            if (osm.ok) {
+              const j = await osm.json();
+              const a = j.address || {};
+              addr = (j.namedetails && j.namedetails['name:en']) || j.display_name || [a.road, a.neighbourhood, a.city || a.town || a.village, a.state, a.country].filter(Boolean).join(', ') || null;
+            }
+          }
+          form.setValue("address", addr || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+        } catch {}
+        setSearchParams(form.getValues());
+      },
+      () => {
+        toast({ title: "Error", description: "Failed to get live location", variant: "destructive" });
+      },
+      { enableHighAccuracy: true, maximumAge: 0 }
+    );
+    setLiveWatchId(id);
+    setIsLive(true);
   };
 
   const onSubmit = (data: SearchFormData) => {
@@ -225,6 +297,14 @@ export default function FindDonors() {
                           ) : (
                             <MapPin size={16} />
                           )}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={isLive ? "default" : "outline"}
+                          onClick={toggleLiveLocation}
+                          data-testid="button-live-location"
+                        >
+                          {isLive ? "Live" : "Go Live"}
                         </Button>
                       </div>
                       <FormMessage />

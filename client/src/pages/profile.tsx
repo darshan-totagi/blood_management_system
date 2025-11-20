@@ -138,7 +138,7 @@ export default function Profile() {
     },
   });
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setIsGettingLocation(true);
     
     if (!navigator.geolocation) {
@@ -150,6 +150,23 @@ export default function Profile() {
       setIsGettingLocation(false);
       return;
     }
+
+    try {
+      if ("permissions" in navigator) {
+        const p = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+        if (p.state === "denied") {
+          toast({
+            title: "Error",
+            description: "Location permission is blocked. Enable it in browser settings.",
+            variant: "destructive",
+          });
+          setIsGettingLocation(false);
+          return;
+        }
+      }
+    } catch {}
+
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -522,7 +539,7 @@ export default function Profile() {
                           <div className="flex items-center space-x-2">
                             <p className="font-medium" data-testid="text-display-whatsapp">{donor.whatsappNumber}</p>
                             <a 
-                              href={`https://wa.me/${donor.whatsappNumber}`} 
+                              href={`https://wa.me/${donor.whatsappNumber.replace(/[^\d]/g, "")}`}
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-secondary hover:text-secondary/80"
@@ -773,4 +790,4 @@ export default function Profile() {
       </div>
     </div>
   );
-} 
+}

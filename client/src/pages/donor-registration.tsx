@@ -121,7 +121,7 @@ export default function DonorRegistration() {
     },
   });
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = async () => {
     setIsGettingLocation(true);
     
     if (!navigator.geolocation) {
@@ -134,24 +134,38 @@ export default function DonorRegistration() {
       return;
     }
 
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string;
+
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        form.setValue("latitude", position.coords.latitude);
-        form.setValue("longitude", position.coords.longitude);
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        form.setValue("latitude", lat);
+        form.setValue("longitude", lon);
         
-        // Reverse geocoding to get address (simplified)
-        fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`)
-          .then(response => response.json())
-          .then(data => {
-            if (data.locality && data.principalSubdivision) {
-              form.setValue("address", `${data.locality}, ${data.principalSubdivision}, ${data.countryName}`);
+        try {
+          let address: string | null = null;
+          if (apiKey) {
+            const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${apiKey}&language=en`);
+            if (response.ok) {
+              const data = await response.json();
+              address = data.results?.[0]?.formatted_address || null;
             }
-          })
-          .catch(() => {
-            // Fallback to coordinates if reverse geocoding fails
-            form.setValue("address", `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`);
-          })
-          .finally(() => setIsGettingLocation(false));
+          }
+          if (!address) {
+            const osm = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&namedetails=1&accept-language=en`);
+            if (osm.ok) {
+              const j = await osm.json();
+              const a = j.address || {};
+              address = (j.namedetails && j.namedetails['name:en']) || j.display_name || [a.road, a.neighbourhood, a.city || a.town || a.village, a.state, a.country].filter(Boolean).join(', ') || null;
+            }
+          }
+          form.setValue("address", address || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+        } catch {
+          form.setValue("address", `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+        } finally {
+          setIsGettingLocation(false);
+        }
 
         toast({
           title: "Success",

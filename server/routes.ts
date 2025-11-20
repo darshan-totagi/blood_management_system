@@ -286,8 +286,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Donor not found" });
       }
 
-      // Generate WhatsApp URL
-      const whatsappUrl = `https://wa.me/${donor.whatsappNumber}?text=${encodeURIComponent(message)}`;
+      // Generate WhatsApp URL (sanitize number to digits-only E.164)
+      const sanitized = donor.whatsappNumber.replace(/[^\d]/g, "");
+      const whatsappUrl = `https://wa.me/${sanitized}?text=${encodeURIComponent(message)}`;
       res.json({ whatsappUrl });
     } catch (error) {
       console.error("Error generating WhatsApp contact:", error);
