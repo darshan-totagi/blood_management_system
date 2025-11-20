@@ -539,7 +539,7 @@ export default function Profile() {
                           <div className="flex items-center space-x-2">
                             <p className="font-medium" data-testid="text-display-whatsapp">{donor.whatsappNumber}</p>
                             <a 
-                              href={`https://wa.me/${donor.whatsappNumber}`} 
+                              href={`https://wa.me/${donor.whatsappNumber.replace(/[^\d]/g, "")}`}
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="text-secondary hover:text-secondary/80"
