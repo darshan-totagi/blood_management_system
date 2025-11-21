@@ -32,17 +32,14 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
-  // Redirect to home if not authenticated
+  // Show message if not authenticated (no auto-login)
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       toast({
         title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
+        description: "Please sign in to continue.",
         variant: "destructive",
       });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
       return;
     }
   }, [isAuthenticated, isLoading, toast]);
@@ -122,12 +119,9 @@ export default function Profile() {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          description: "Please sign in to continue.",
           variant: "destructive",
         });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
         return;
       }
       toast({
