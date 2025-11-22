@@ -24,7 +24,7 @@ import { Heart, User, Calendar, Award, MapPin, Phone, Edit, Save, X } from "luci
 import { Link } from "wouter";
 import { insertDonorSchema } from "@shared/schema";
 import { z } from "zod";
-import type { Donor, Donation, CreditTransaction } from "@shared/schema";
+import type { Donor, Donation, CreditTransaction, RequestResponse } from "@shared/schema";
 
 const updateDonorSchema = insertDonorSchema.partial().omit({ userId: true });
 type UpdateDonorData = z.infer<typeof updateDonorSchema>;
@@ -36,11 +36,16 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [isLogDonationOpen, setIsLogDonationOpen] = useState(false);
+
   type DonationFormData = { donationDate: Date; hospitalName?: string; unitsGiven: number; notes?: string };
-  const donationForm = useForm<DonationFormData>({ defaultValues: { donationDate: new Date(), hospitalName: "", unitsGiven: 1, notes: "" } });
+
+  const donationForm = useForm<DonationFormData>({
+    defaultValues: { donationDate: new Date(), hospitalName: "", unitsGiven: 1, notes: "" },
+  });
+
   const logDonationMutation = useMutation({
     mutationFn: async (vals: DonationFormData) => {
-      const response = await apiRequest('POST', '/api/donations', {
+      const response = await apiRequest("POST", "/api/donations", {
         donationDate: vals.donationDate,
         bloodGroup: donor?.bloodGroup || "",
         unitsGiven: vals.unitsGiven,
@@ -105,6 +110,34 @@ export default function Profile() {
     enabled: !!donor,
   });
 
+  // NEW: Poll for responses to my requests and show toasts
+  const { data: myResponses = [] } = useQuery<RequestResponse[]>({
+    queryKey: ["/api/blood-requests/responses/me"],
+    refetchInterval: 5000,
+    retry: false,
+    enabled: !!user, // optional safety so it only runs when logged in
+  });
+
+  useEffect(() => {
+    const seenKey = "__seen_response_ids__";
+    const seen = new Set<string>(JSON.parse(sessionStorage.getItem(seenKey) || "[]"));
+
+    myResponses.forEach((resp) => {
+      if (!seen.has(resp.id)) {
+        toast({
+          title: `Donor ${resp.status === "accepted" ? "accepted" : "rejected"}`,
+          description:
+            resp.status === "accepted"
+              ? "A donor accepted your blood request."
+              : "A donor declined your blood request.",
+        });
+        seen.add(resp.id);
+      }
+    });
+
+    sessionStorage.setItem(seenKey, JSON.stringify([...seen]));
+  }, [myResponses, toast]);
+
   const form = useForm<UpdateDonorData>({
     resolver: zodResolver(updateDonorSchema),
     defaultValues: {
@@ -139,7 +172,7 @@ export default function Profile() {
 
   const updateDonorMutation = useMutation({
     mutationFn: async (data: UpdateDonorData) => {
-      const response = await apiRequest('PUT', '/api/donors/me', data);
+      const response = await apiRequest("PUT", "/api/donors/me", data);
       return await response.json();
     },
     onSuccess: () => {
@@ -150,7 +183,7 @@ export default function Profile() {
       queryClient.invalidateQueries({ queryKey: ["/api/donors/me"] });
       setIsEditing(false);
     },
-    onError: (error) => {
+    onError: (error: any) => {
       if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
@@ -169,7 +202,7 @@ export default function Profile() {
 
   const getCurrentLocation = async () => {
     setIsGettingLocation(true);
-    
+
     if (!navigator.geolocation) {
       toast({
         title: "Error",
@@ -201,17 +234,22 @@ export default function Profile() {
       (position) => {
         form.setValue("latitude", position.coords.latitude);
         form.setValue("longitude", position.coords.longitude);
-        
+
         // Reverse geocoding to get address
-        fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`)
-          .then(response => response.json())
-          .then(data => {
+        fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${position.coords.latitude}&longitude=${position.coords.longitude}&localityLanguage=en`,
+        )
+          .then((response) => response.json())
+          .then((data) => {
             if (data.locality && data.principalSubdivision) {
               form.setValue("address", `${data.locality}, ${data.principalSubdivision}, ${data.countryName}`);
             }
           })
           .catch(() => {
-            form.setValue("address", `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`);
+            form.setValue(
+              "address",
+              `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
+            );
           })
           .finally(() => setIsGettingLocation(false));
 
@@ -220,14 +258,14 @@ export default function Profile() {
           description: "Location updated successfully",
         });
       },
-      (error) => {
+      () => {
         toast({
           title: "Error",
           description: "Failed to get your location. Please enter manually.",
           variant: "destructive",
         });
         setIsGettingLocation(false);
-      }
+      },
     );
   };
 
@@ -288,7 +326,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-background" data-testid="page-profile">
       <Header />
-      
+
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -297,25 +335,17 @@ export default function Profile() {
           </div>
           <div className="flex items-center space-x-2">
             {!isEditing ? (
-              <Button 
-                onClick={() => setIsEditing(true)} 
-                variant="outline"
-                data-testid="button-edit-profile"
-              >
+              <Button onClick={() => setIsEditing(true)} variant="outline" data-testid="button-edit-profile">
                 <Edit size={16} className="mr-2" />
                 Edit Profile
               </Button>
             ) : (
               <div className="flex space-x-2">
-                <Button 
-                  onClick={cancelEdit} 
-                  variant="outline"
-                  data-testid="button-cancel-edit"
-                >
+                <Button onClick={cancelEdit} variant="outline" data-testid="button-cancel-edit">
                   <X size={16} className="mr-2" />
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   onClick={form.handleSubmit(onSubmit)}
                   disabled={updateDonorMutation.isPending}
                   data-testid="button-save-profile"
@@ -362,7 +392,10 @@ export default function Profile() {
                   <div className="space-y-4">
                     <div className="text-center">
                       <div className="bg-secondary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <span className="text-secondary font-bold text-xl" data-testid="text-blood-group-display">
+                        <span
+                          className="text-secondary font-bold text-xl"
+                          data-testid="text-blood-group-display"
+                        >
                           {donor.bloodGroup}
                         </span>
                       </div>
@@ -371,9 +404,9 @@ export default function Profile() {
                       </h3>
                       <p className="text-sm text-muted-foreground">{donor.age} years old</p>
                     </div>
-                    
+
                     <Separator />
-                    
+
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Total Donations:</span>
@@ -389,7 +422,7 @@ export default function Profile() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Status:</span>
-                        <Badge 
+                        <Badge
                           variant={donor.isAvailable ? "default" : "secondary"}
                           data-testid="badge-availability-status"
                         >
@@ -425,7 +458,7 @@ export default function Profile() {
                                 </FormItem>
                               )}
                             />
-                            
+
                             <FormField
                               control={form.control}
                               name="age"
@@ -433,8 +466,8 @@ export default function Profile() {
                                 <FormItem>
                                   <FormLabel>Age</FormLabel>
                                   <FormControl>
-                                    <Input 
-                                      type="number" 
+                                    <Input
+                                      type="number"
                                       {...field}
                                       onChange={(e) => field.onChange(parseInt(e.target.value))}
                                       data-testid="input-edit-age"
@@ -474,7 +507,7 @@ export default function Profile() {
                                 </FormItem>
                               )}
                             />
-                            
+
                             <FormField
                               control={form.control}
                               name="weight"
@@ -482,8 +515,8 @@ export default function Profile() {
                                 <FormItem>
                                   <FormLabel>Weight (kg)</FormLabel>
                                   <FormControl>
-                                    <Input 
-                                      type="number" 
+                                    <Input
+                                      type="number"
                                       {...field}
                                       onChange={(e) => field.onChange(parseFloat(e.target.value))}
                                       data-testid="input-edit-weight"
@@ -517,10 +550,14 @@ export default function Profile() {
                                 <FormLabel>Address</FormLabel>
                                 <div className="flex space-x-2">
                                   <FormControl>
-                                    <Input {...field} className="flex-1" data-testid="input-edit-address" />
+                                    <Input
+                                      {...field}
+                                      className="flex-1"
+                                      data-testid="input-edit-address"
+                                    />
                                   </FormControl>
-                                  <Button 
-                                    type="button" 
+                                  <Button
+                                    type="button"
                                     variant="outline"
                                     onClick={getCurrentLocation}
                                     disabled={isGettingLocation}
@@ -537,6 +574,7 @@ export default function Profile() {
                               </FormItem>
                             )}
                           />
+
                           <FormField
                             control={form.control}
                             name="lastDonationDate"
@@ -546,7 +584,9 @@ export default function Profile() {
                                 <Popover>
                                   <PopoverTrigger asChild>
                                     <Button variant="outline" type="button">
-                                      {field.value ? new Date(field.value).toLocaleDateString() : "Pick a date"}
+                                      {field.value
+                                        ? new Date(field.value).toLocaleDateString()
+                                        : "Pick a date"}
                                     </Button>
                                   </PopoverTrigger>
                                   <PopoverContent align="start" className="w-auto p-0">
@@ -558,7 +598,12 @@ export default function Profile() {
                                   </PopoverContent>
                                 </Popover>
                                 <div className="flex gap-2 mt-2">
-                                  <Button type="button" variant="ghost" size="sm" onClick={() => field.onChange(null)}>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => field.onChange(null)}
+                                  >
                                     Clear
                                   </Button>
                                 </div>
@@ -572,33 +617,68 @@ export default function Profile() {
                       <div className="space-y-4">
                         <div className="grid md:grid-cols-2 gap-4">
                           <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
-                            <p className="font-medium" data-testid="text-display-full-name">{donor.fullName}</p>
+                            <Label className="text-sm font-medium text-muted-foreground">
+                              Full Name
+                            </Label>
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-full-name"
+                            >
+                              {donor.fullName}
+                            </p>
                           </div>
                           <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Age</Label>
-                            <p className="font-medium" data-testid="text-display-age">{donor.age} years</p>
+                            <Label className="text-sm font-medium text-muted-foreground">
+                              Age
+                            </Label>
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-age"
+                            >
+                              {donor.age} years
+                            </p>
                           </div>
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-4">
                           <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Blood Group</Label>
-                            <p className="font-medium" data-testid="text-display-blood-group">{donor.bloodGroup}</p>
+                            <Label className="text-sm font-medium text-muted-foreground">
+                              Blood Group
+                            </Label>
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-blood-group"
+                            >
+                              {donor.bloodGroup}
+                            </p>
                           </div>
                           <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Weight</Label>
-                            <p className="font-medium" data-testid="text-display-weight">{donor.weight} kg</p>
+                            <Label className="text-sm font-medium text-muted-foreground">
+                              Weight
+                            </Label>
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-weight"
+                            >
+                              {donor.weight} kg
+                            </p>
                           </div>
                         </div>
 
                         <div>
-                          <Label className="text-sm font-medium text-muted-foreground">WhatsApp Number</Label>
+                          <Label className="text-sm font-medium text-muted-foreground">
+                            WhatsApp Number
+                          </Label>
                           <div className="flex items-center space-x-2">
-                            <p className="font-medium" data-testid="text-display-whatsapp">{donor.whatsappNumber}</p>
-                            <a 
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-whatsapp"
+                            >
+                              {donor.whatsappNumber}
+                            </p>
+                            <a
                               href={`https://wa.me/${donor.whatsappNumber.replace(/[^\d]/g, "")}`}
-                              target="_blank" 
+                              target="_blank"
                               rel="noopener noreferrer"
                               className="text-secondary hover:text-secondary/80"
                               data-testid="link-whatsapp-self"
@@ -609,14 +689,26 @@ export default function Profile() {
                         </div>
 
                         <div>
-                          <Label className="text-sm font-medium text-muted-foreground">Address</Label>
-                          <p className="font-medium" data-testid="text-display-address">{donor.address}</p>
+                          <Label className="text-sm font-medium text-muted-foreground">
+                            Address
+                          </Label>
+                          <p
+                            className="font-medium"
+                            data-testid="text-display-address"
+                          >
+                            {donor.address}
+                          </p>
                         </div>
 
                         {donor.lastDonationDate && (
                           <div>
-                            <Label className="text-sm font-medium text-muted-foreground">Last Donation</Label>
-                            <p className="font-medium" data-testid="text-display-last-donation">
+                            <Label className="text-sm font-medium text-muted-foreground">
+                              Last Donation
+                            </Label>
+                            <p
+                              className="font-medium"
+                              data-testid="text-display-last-donation"
+                            >
                               {new Date(donor.lastDonationDate).toLocaleDateString()}
                             </p>
                           </div>
@@ -636,7 +728,13 @@ export default function Profile() {
                   <Heart className="text-secondary" size={20} />
                   <span>Donation History</span>
                 </CardTitle>
-                <Button variant="secondary" size="sm" onClick={() => setIsLogDonationOpen(true)}>Record Donation</Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsLogDonationOpen(true)}
+                >
+                  Record Donation
+                </Button>
               </CardHeader>
               <Dialog open={isLogDonationOpen} onOpenChange={setIsLogDonationOpen}>
                 <DialogContent className="max-w-md">
@@ -644,47 +742,99 @@ export default function Profile() {
                     <DialogTitle>Record Donation</DialogTitle>
                   </DialogHeader>
                   <Form {...donationForm}>
-                    <form className="space-y-4" onSubmit={donationForm.handleSubmit((values) => logDonationMutation.mutate(values))}>
-                      <FormField control={donationForm.control} name="donationDate" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Donation Date</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" type="button">
-                                {field.value ? new Date(field.value).toLocaleDateString() : "Pick a date"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-auto p-0">
-                              <DatePicker mode="single" selected={field.value} onSelect={(date) => field.onChange(date ?? new Date())} />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={donationForm.control} name="hospitalName" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Hospital Name</FormLabel>
-                          <FormControl><Input {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={donationForm.control} name="unitsGiven" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Units Given</FormLabel>
-                          <FormControl><Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value))} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={donationForm.control} name="notes" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Notes</FormLabel>
-                          <FormControl><Textarea {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
+                    <form
+                      className="space-y-4"
+                      onSubmit={donationForm.handleSubmit((values) =>
+                        logDonationMutation.mutate(values),
+                      )}
+                    >
+                      <FormField
+                        control={donationForm.control}
+                        name="donationDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Donation Date</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="outline" type="button">
+                                  {field.value
+                                    ? new Date(field.value).toLocaleDateString()
+                                    : "Pick a date"}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent align="start" className="w-auto p-0">
+                                <DatePicker
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={(date) =>
+                                    field.onChange(date ?? new Date())
+                                  }
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={donationForm.control}
+                        name="hospitalName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Hospital Name</FormLabel>
+                            <FormControl>
+                              <Input {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={donationForm.control}
+                        name="unitsGiven"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Units Given</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                {...field}
+                                onChange={(e) =>
+                                  field.onChange(parseInt(e.target.value))
+                                }
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={donationForm.control}
+                        name="notes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Notes</FormLabel>
+                            <FormControl>
+                              <Textarea {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <div className="flex gap-2 justify-end">
-                        <Button type="button" variant="outline" onClick={() => setIsLogDonationOpen(false)}>Cancel</Button>
-                        <Button type="submit" disabled={logDonationMutation.isPending}>{logDonationMutation.isPending ? "Saving..." : "Save"}</Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsLogDonationOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={logDonationMutation.isPending}
+                        >
+                          {logDonationMutation.isPending ? "Saving..." : "Save"}
+                        </Button>
                       </div>
                     </form>
                   </Form>
@@ -698,7 +848,10 @@ export default function Profile() {
                 ) : donations.length > 0 ? (
                   <div className="space-y-4" data-testid="donations-list">
                     {donations.map((donation) => (
-                      <div key={donation.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
+                      <div
+                        key={donation.id}
+                        className="flex items-center justify-between p-4 border border-border rounded-lg"
+                      >
                         <div className="flex items-center space-x-4">
                           <div className="bg-secondary/10 p-2 rounded-full">
                             <Heart className="text-secondary" size={16} />
@@ -709,23 +862,38 @@ export default function Profile() {
                               {new Date(donation.donationDate).toLocaleDateString()}
                             </p>
                             {donation.hospitalName && (
-                              <p className="text-sm text-muted-foreground">{donation.hospitalName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {donation.hospitalName}
+                              </p>
                             )}
                           </div>
                         </div>
                         <div className="text-right">
-                          <Badge variant="outline">+{donation.creditsEarned} credits</Badge>
-                          <p className="text-sm text-muted-foreground mt-1">{donation.unitsGiven} unit(s)</p>
+                          <Badge variant="outline">
+                            +{donation.creditsEarned} credits
+                          </Badge>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {donation.unitsGiven} unit(s)
+                          </p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center p-8">
-                    <Heart className="mx-auto mb-4 text-muted-foreground" size={48} />
-                    <h3 className="text-lg font-semibold mb-2">No Donations Yet</h3>
-                    <p className="text-muted-foreground" data-testid="text-no-donations-profile">
-                      You haven't made any donations yet. Start saving lives today!
+                    <Heart
+                      className="mx-auto mb-4 text-muted-foreground"
+                      size={48}
+                    />
+                    <h3 className="text-lg font-semibold mb-2">
+                      No Donations Yet
+                    </h3>
+                    <p
+                      className="text-muted-foreground"
+                      data-testid="text-no-donations-profile"
+                    >
+                      You haven't made any donations yet. Start saving lives
+                      today!
                     </p>
                   </div>
                 )}
@@ -746,10 +914,15 @@ export default function Profile() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-semibold">Available Credits</h3>
-                      <p className="text-sm text-muted-foreground">Use credits for free blood requests</p>
+                      <p className="text-sm text-muted-foreground">
+                        Use credits for free blood requests
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-3xl font-bold text-primary" data-testid="text-available-credits">
+                      <p
+                        className="text-3xl font-bold text-primary"
+                        data-testid="text-available-credits"
+                      >
                         {donor.credits}
                       </p>
                       <p className="text-sm text-muted-foreground">credits</p>
@@ -762,46 +935,73 @@ export default function Profile() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
                 ) : creditTransactions.length > 0 ? (
-                  <div className="space-y-4" data-testid="credit-transactions-list">
+                  <div
+                    className="space-y-4"
+                    data-testid="credit-transactions-list"
+                  >
                     {creditTransactions.map((transaction) => (
-                      <div key={transaction.id} className="flex items-center justify-between p-4 border border-border rounded-lg">
+                      <div
+                        key={transaction.id}
+                        className="flex items-center justify-between p-4 border border-border rounded-lg"
+                      >
                         <div className="flex items-center space-x-4">
-                          <div className={`p-2 rounded-full ${
-                            transaction.transactionType === 'earned' 
-                              ? 'bg-secondary/10' 
-                              : 'bg-accent/10'
-                          }`}>
-                            {transaction.transactionType === 'earned' ? (
+                          <div
+                            className={`p-2 rounded-full ${
+                              transaction.transactionType === "earned"
+                                ? "bg-secondary/10"
+                                : "bg-accent/10"
+                            }`}
+                          >
+                            {transaction.transactionType === "earned" ? (
                               <Award className="text-secondary" size={16} />
                             ) : (
                               <Heart className="text-accent" size={16} />
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">{transaction.description}</p>
+                            <p className="font-medium">
+                              {transaction.description}
+                            </p>
                             <p className="text-sm text-muted-foreground">
-                              {transaction.createdAt ? new Date(transaction.createdAt).toLocaleDateString() : 'Unknown date'}
+                              {transaction.createdAt
+                                ? new Date(
+                                    transaction.createdAt,
+                                  ).toLocaleDateString()
+                                : "Unknown date"}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className={`font-semibold ${
-                            transaction.transactionType === 'earned' 
-                              ? 'text-secondary' 
-                              : 'text-accent'
-                          }`}>
-                            {transaction.transactionType === 'earned' ? '+' : '-'}{transaction.amount}
+                          <p
+                            className={`font-semibold ${
+                              transaction.transactionType === "earned"
+                                ? "text-secondary"
+                                : "text-accent"
+                            }`}
+                          >
+                            {transaction.transactionType === "earned" ? "+" : "-"}
+                            {transaction.amount}
                           </p>
-                          <p className="text-sm text-muted-foreground">credits</p>
+                          <p className="text-sm text-muted-foreground">
+                            credits
+                          </p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-center p-8">
-                    <Award className="mx-auto mb-4 text-muted-foreground" size={48} />
-                    <h3 className="text-lg font-semibold mb-2">No Transactions Yet</h3>
-                    <p className="text-muted-foreground" data-testid="text-no-transactions">
+                    <Award
+                      className="mx-auto mb-4 text-muted-foreground"
+                      size={48}
+                    />
+                    <h3 className="text-lg font-semibold mb-2">
+                      No Transactions Yet
+                    </h3>
+                    <p
+                      className="text-muted-foreground"
+                      data-testid="text-no-transactions"
+                    >
                       Start donating blood to earn your first credits!
                     </p>
                   </div>
@@ -826,11 +1026,13 @@ export default function Profile() {
                 ) : eligibility ? (
                   <div className="space-y-6">
                     <div className="text-center p-6 border rounded-lg">
-                      <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
-                        eligibility.canDonate 
-                          ? 'bg-secondary/10' 
-                          : 'bg-accent/10'
-                      }`}>
+                      <div
+                        className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                          eligibility.canDonate
+                            ? "bg-secondary/10"
+                            : "bg-accent/10"
+                        }`}
+                      >
                         {eligibility.canDonate ? (
                           <Heart className="text-secondary" size={32} />
                         ) : (
@@ -838,22 +1040,27 @@ export default function Profile() {
                         )}
                       </div>
                       <h3 className="text-xl font-semibold mb-2">
-                        {eligibility.canDonate ? "Eligible to Donate" : "Not Eligible Yet"}
+                        {eligibility.canDonate
+                          ? "Eligible to Donate"
+                          : "Not Eligible Yet"}
                       </h3>
                       <p className="text-muted-foreground">
-                        {eligibility.canDonate 
+                        {eligibility.canDonate
                           ? "You can donate blood now. Thank you for your willingness to help!"
-                          : eligibility.nextEligibleDate 
-                            ? `You can donate again after ${new Date(eligibility.nextEligibleDate).toLocaleDateString()}`
-                            : "Please wait before your next donation."
-                        }
+                          : eligibility.nextEligibleDate
+                          ? `You can donate again after ${new Date(
+                              eligibility.nextEligibleDate,
+                            ).toLocaleDateString()}`
+                          : "Please wait before your next donation."}
                       </p>
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-4">
                       <Card>
                         <CardContent className="p-4">
-                          <h4 className="font-semibold mb-2">Safety Guidelines</h4>
+                          <h4 className="font-semibold mb-2">
+                            Safety Guidelines
+                          </h4>
                           <ul className="text-sm text-muted-foreground space-y-1">
                             <li>• Wait 6 months between donations</li>
                             <li>• Maintain healthy weight (≥50kg)</li>
@@ -865,7 +1072,9 @@ export default function Profile() {
 
                       <Card>
                         <CardContent className="p-4">
-                          <h4 className="font-semibold mb-2">Before Donating</h4>
+                          <h4 className="font-semibold mb-2">
+                            Before Donating
+                          </h4>
                           <ul className="text-sm text-muted-foreground space-y-1">
                             <li>• Eat a healthy meal</li>
                             <li>• Stay well hydrated</li>
@@ -880,15 +1089,23 @@ export default function Profile() {
                       <div className="p-4 bg-muted/20 rounded-lg">
                         <h4 className="font-semibold mb-2">Last Donation</h4>
                         <p className="text-sm text-muted-foreground">
-                          You last donated on {new Date(donor.lastDonationDate).toLocaleDateString()}
+                          You last donated on{" "}
+                          {new Date(
+                            donor.lastDonationDate,
+                          ).toLocaleDateString()}
                         </p>
                       </div>
                     )}
                   </div>
                 ) : (
                   <div className="text-center p-8">
-                    <Calendar className="mx-auto mb-4 text-muted-foreground" size={48} />
-                    <h3 className="text-lg font-semibold mb-2">Unable to Check Eligibility</h3>
+                    <Calendar
+                      className="mx-auto mb-4 text-muted-foreground"
+                      size={48}
+                    />
+                    <h3 className="text-lg font-semibold mb-2">
+                      Unable to Check Eligibility
+                    </h3>
                     <p className="text-muted-foreground">
                       Please try again later or contact support.
                     </p>
