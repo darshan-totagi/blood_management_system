@@ -16,6 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar as DatePicker } from "@/components/ui/calendar";
 import { Heart, User, Calendar, Award, MapPin, Phone, Edit, Save, X } from "lucide-react";
@@ -33,6 +35,37 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isLogDonationOpen, setIsLogDonationOpen] = useState(false);
+  type DonationFormData = { donationDate: Date; hospitalName?: string; unitsGiven: number; notes?: string };
+  const donationForm = useForm<DonationFormData>({ defaultValues: { donationDate: new Date(), hospitalName: "", unitsGiven: 1, notes: "" } });
+  const logDonationMutation = useMutation({
+    mutationFn: async (vals: DonationFormData) => {
+      const response = await apiRequest('POST', '/api/donations', {
+        donationDate: vals.donationDate,
+        bloodGroup: donor?.bloodGroup || "",
+        unitsGiven: vals.unitsGiven,
+        creditsEarned: 5,
+        hospitalName: vals.hospitalName || undefined,
+        notes: vals.notes || undefined,
+      });
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Success!", description: "Donation recorded and profile updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/donations/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/donors/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/donors/eligibility"] });
+      setIsLogDonationOpen(false);
+    },
+    onError: (error: any) => {
+      if (isUnauthorizedError(error)) {
+        toast({ title: "Unauthorized", description: "Please sign in to continue.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Error", description: error.message || "Failed to record donation", variant: "destructive" });
+    },
+  });
 
   // Show message if not authenticated (no auto-login)
   useEffect(() => {
@@ -598,12 +631,65 @@ export default function Profile() {
 
           <TabsContent value="donations">
             <Card>
-              <CardHeader>
+              <CardHeader className="flex items-center justify-between">
                 <CardTitle className="flex items-center space-x-2">
                   <Heart className="text-secondary" size={20} />
                   <span>Donation History</span>
                 </CardTitle>
+                <Button variant="secondary" size="sm" onClick={() => setIsLogDonationOpen(true)}>Record Donation</Button>
               </CardHeader>
+              <Dialog open={isLogDonationOpen} onOpenChange={setIsLogDonationOpen}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Record Donation</DialogTitle>
+                  </DialogHeader>
+                  <Form {...donationForm}>
+                    <form className="space-y-4" onSubmit={donationForm.handleSubmit((values) => logDonationMutation.mutate(values))}>
+                      <FormField control={donationForm.control} name="donationDate" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Donation Date</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" type="button">
+                                {field.value ? new Date(field.value).toLocaleDateString() : "Pick a date"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-auto p-0">
+                              <DatePicker mode="single" selected={field.value} onSelect={(date) => field.onChange(date ?? new Date())} />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={donationForm.control} name="hospitalName" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hospital Name</FormLabel>
+                          <FormControl><Input {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={donationForm.control} name="unitsGiven" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Units Given</FormLabel>
+                          <FormControl><Input type="number" {...field} onChange={(e) => field.onChange(parseInt(e.target.value))} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <FormField control={donationForm.control} name="notes" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Notes</FormLabel>
+                          <FormControl><Textarea {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="outline" onClick={() => setIsLogDonationOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={logDonationMutation.isPending}>{logDonationMutation.isPending ? "Saving..." : "Save"}</Button>
+                      </div>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
               <CardContent>
                 {donationsLoading ? (
                   <div className="flex items-center justify-center p-8">
