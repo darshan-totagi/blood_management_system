@@ -13,6 +13,9 @@ import {
   type Donation,
   type InsertDonation,
   type CreditTransaction,
+  requestResponses,
+  type RequestResponse,
+  type InsertRequestResponse,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
@@ -46,6 +49,11 @@ export interface IStorage {
   addCredits(donorId: string, amount: number, description: string, relatedDonationId?: string): Promise<void>;
   spendCredits(donorId: string, amount: number, description: string, relatedRequestId?: string): Promise<boolean>;
   getCreditTransactions(donorId: string): Promise<CreditTransaction[]>;
+
+  // Request response operations
+  createRequestResponse(response: InsertRequestResponse): Promise<RequestResponse>;
+  getResponsesForRequester(userId: string): Promise<RequestResponse[]>;
+  getResponsesByRequest(requestId: string): Promise<RequestResponse[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -239,6 +247,34 @@ export class DatabaseStorage implements IStorage {
     return newDonation;
   }
 
+  async verifyDonation(donorId: string, requestId: string, donation: Omit<InsertDonation, "donorId" | "requestId">): Promise<Donation> {
+    const [newDonation] = await db
+      .insert(donations)
+      .values({ ...donation, donorId, requestId })
+      .returning();
+
+    await db
+      .update(donors)
+      .set({
+        totalDonations: sql`${donors.totalDonations} + 1`,
+        lastDonationDate: new Date(newDonation.donationDate),
+        credits: sql`${donors.credits} + ${newDonation.creditsEarned || 5}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(donors.id, donorId));
+
+    await this.addCredits(
+      donorId,
+      newDonation.creditsEarned || 5,
+      `Blood donation on ${new Date(newDonation.donationDate).toLocaleDateString()}`,
+      newDonation.id
+    );
+
+    await this.updateBloodRequestStatus(requestId, "fulfilled");
+
+    return newDonation;
+  }
+
   async getDonorDonations(donorId: string): Promise<Donation[]> {
     return await db
       .select()
@@ -299,6 +335,54 @@ export class DatabaseStorage implements IStorage {
       .from(creditTransactions)
       .where(eq(creditTransactions.donorId, donorId))
       .orderBy(desc(creditTransactions.createdAt));
+  }
+
+  // NEW: request response operations
+  async createRequestResponse(response: InsertRequestResponse): Promise<RequestResponse> {
+    const [resp] = await db.insert(requestResponses).values(response).returning();
+    return resp;
+  }
+
+  async getResponsesForRequester(userId: string): Promise<RequestResponse[]> {
+    // Join responses with requests to filter by requesterId
+    const rows = await db
+      .select()
+      .from(requestResponses)
+      .innerJoin(bloodRequests, eq(requestResponses.requestId, bloodRequests.id))
+      .where(eq(bloodRequests.requesterId, userId))
+      .orderBy(desc(requestResponses.createdAt));
+    // Map to plain RequestResponse rows
+    return rows.map((r: any) => r.request_responses as RequestResponse);
+  }
+
+  async getResponsesByRequest(requestId: string): Promise<RequestResponse[]> {
+    return await db
+      .select()
+      .from(requestResponses)
+      .where(eq(requestResponses.requestId, requestId))
+      .orderBy(desc(requestResponses.createdAt));
+  }
+
+  constructor() {
+    // Dev safeguard: ensure the request_responses table exists
+    this.ensureRequestResponsesTable().catch((err) => {
+      console.error("Failed to ensure request_responses table:", err);
+    });
+  }
+
+  private async ensureRequestResponsesTable() {
+    // Ensure pgcrypto for gen_random_uuid()
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
+    // Create table if missing
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS request_responses (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        request_id varchar NOT NULL REFERENCES blood_requests(id),
+        donor_id varchar NOT NULL REFERENCES donors(id),
+        status varchar NOT NULL,
+        created_at timestamp DEFAULT now()
+      );
+    `);
   }
 }
 

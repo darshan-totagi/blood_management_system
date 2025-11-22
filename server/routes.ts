@@ -167,6 +167,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // NEW: Donor responds to a request (accept/reject)
+  app.post('/api/blood-requests/:id/respond', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body as { status: "accepted" | "rejected" };
+      if (!["accepted", "rejected"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const request = await storage.getBloodRequest(id);
+      if (!request || request.status !== "active") {
+        return res.status(404).json({ message: "Active blood request not found" });
+      }
+
+      // Ensure caller is a donor
+      const donor = await storage.getDonorByUserId(req.user.claims.sub);
+      if (!donor) {
+        return res.status(403).json({ message: "Only donors can respond to requests" });
+      }
+
+      const resp = await storage.createRequestResponse({
+        requestId: id,
+        donorId: donor.id,
+        status,
+      });
+      res.json(resp);
+    } catch (error) {
+      console.error("Error responding to blood request:", error);
+      res.status(500).json({ message: "Failed to respond to blood request" });
+    }
+  });
+
+  // NEW: Requester can see responses to their requests (for notifications)
+  app.get('/api/blood-requests/responses/me', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const responses = await storage.getResponsesForRequester(userId);
+      res.json(responses);
+    } catch (error) {
+      console.error("Error fetching responses:", error);
+      res.status(500).json({ message: "Failed to fetch responses" });
+    }
+  });
   app.put('/api/blood-requests/:id/status', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -293,6 +335,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating WhatsApp contact:", error);
       res.status(500).json({ message: "Failed to generate WhatsApp contact" });
+    }
+  });
+
+  app.post('/api/requests/:id/verify', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestId = req.params.id;
+      const userId = req.user.claims.sub;
+      const request = await storage.getBloodRequest(requestId);
+      if (!request || request.requesterId !== userId) {
+        return res.status(403).json({ message: "Not allowed to verify this request" });
+      }
+
+      const donorId = req.body.donorId as string;
+      const donor = await storage.getDonor(donorId);
+      if (!donor) {
+        return res.status(404).json({ message: "Donor not found" });
+      }
+
+      const donation = await storage.verifyDonation(donor.id, requestId, {
+        donationDate: req.body.donationDate ? new Date(req.body.donationDate) : new Date(),
+        bloodGroup: req.body.bloodGroup || donor.bloodGroup,
+        unitsGiven: req.body.unitsGiven || 1,
+        creditsEarned: req.body.creditsEarned || 5,
+        hospitalName: req.body.hospitalName,
+        notes: req.body.notes,
+      });
+
+      res.json(donation);
+    } catch (error) {
+      console.error("Error verifying donation:", error);
+      res.status(400).json({ message: "Failed to verify donation" });
     }
   });
 

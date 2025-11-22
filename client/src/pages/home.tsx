@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -47,17 +47,11 @@ const subtleFade = {
 
 export default function Home() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Time-based greeting (purely visual, no logic change)
-  const hours = new Date().getHours();
-  const greeting =
-    hours < 12 ? "Good morning" : hours < 17 ? "Good afternoon" : "Good evening";
-
-  /* -------------------------------------------------------------------------- */
-  /*                              AUTH REDIRECT UX                              */
-  /* -------------------------------------------------------------------------- */
-
+  // Show message if not authenticated (no auto-login)
+  // Redirect on logout
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       toast({
@@ -110,6 +104,75 @@ export default function Home() {
             <p className="text-xs text-muted-foreground">
               Fetching your donor profile and activity
             </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* -------------------------------------------------------------------------- */
+  /*                               MAIN DASHBOARD                               */
+  /* -------------------------------------------------------------------------- */
+
+  // NEW: Fetch active requests (for donors to respond)
+  const { data: activeRequests = [] } = useQuery<BloodRequest[]>({
+    queryKey: ["/api/blood-requests"],
+    retry: false,
+    enabled: !!donor,
+  });
+
+  // NEW: Donor respond mutation
+  const respondMutation = useMutation({
+    mutationFn: async ({ requestId, status }: { requestId: string; status: "accepted" | "rejected" }) => {
+      const r = await fetch(`/api/blood-requests/${requestId}/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error("Failed to submit response");
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Response submitted", description: "Thanks for your decision." });
+      queryClient.invalidateQueries({ queryKey: ["/api/blood-requests"] });
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e.message || "Failed to respond", variant: "destructive" });
+    },
+  });
+
+  // NEW: Poll for responses to my requests and toast when new
+  const { data: myResponses = [] } = useQuery<RequestResponse[]>({
+    queryKey: ["/api/blood-requests/responses/me"],
+    refetchInterval: 5000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    // Simple in-memory dedup across reloads; could persist if needed
+    const seenKey = "__seen_response_ids__";
+    const seen = new Set<string>(JSON.parse(sessionStorage.getItem(seenKey) || "[]"));
+    myResponses.forEach((resp) => {
+      if (!seen.has(resp.id)) {
+        toast({
+          title: `Donor ${resp.status === "accepted" ? "accepted" : "rejected"}`,
+          description: resp.status === "accepted"
+            ? "A donor accepted your blood request."
+            : "A donor declined your blood request.",
+        });
+        seen.add(resp.id);
+      }
+    });
+    sessionStorage.setItem(seenKey, JSON.stringify([...seen]));
+  }, [myResponses, toast]);
+
+  if (isLoading || donorLoading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col">
+        <Header />
+        <div className="flex items-center justify-center flex-1">
+          <div className="animate-pulse text-primary text-3xl font-semibold">
+            Loading…
           </div>
         </div>
       </div>
