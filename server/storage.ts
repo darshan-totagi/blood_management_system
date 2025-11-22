@@ -239,6 +239,34 @@ export class DatabaseStorage implements IStorage {
     return newDonation;
   }
 
+  async verifyDonation(donorId: string, requestId: string, donation: Omit<InsertDonation, "donorId" | "requestId">): Promise<Donation> {
+    const [newDonation] = await db
+      .insert(donations)
+      .values({ ...donation, donorId, requestId })
+      .returning();
+
+    await db
+      .update(donors)
+      .set({
+        totalDonations: sql`${donors.totalDonations} + 1`,
+        lastDonationDate: new Date(newDonation.donationDate),
+        credits: sql`${donors.credits} + ${newDonation.creditsEarned || 5}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(donors.id, donorId));
+
+    await this.addCredits(
+      donorId,
+      newDonation.creditsEarned || 5,
+      `Blood donation on ${new Date(newDonation.donationDate).toLocaleDateString()}`,
+      newDonation.id
+    );
+
+    await this.updateBloodRequestStatus(requestId, "fulfilled");
+
+    return newDonation;
+  }
+
   async getDonorDonations(donorId: string): Promise<Donation[]> {
     return await db
       .select()

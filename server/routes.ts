@@ -296,6 +296,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/requests/:id/verify', isAuthenticated, async (req: any, res) => {
+    try {
+      const requestId = req.params.id;
+      const userId = req.user.claims.sub;
+      const request = await storage.getBloodRequest(requestId);
+      if (!request || request.requesterId !== userId) {
+        return res.status(403).json({ message: "Not allowed to verify this request" });
+      }
+
+      const donorId = req.body.donorId as string;
+      const donor = await storage.getDonor(donorId);
+      if (!donor) {
+        return res.status(404).json({ message: "Donor not found" });
+      }
+
+      const donation = await storage.verifyDonation(donor.id, requestId, {
+        donationDate: req.body.donationDate ? new Date(req.body.donationDate) : new Date(),
+        bloodGroup: req.body.bloodGroup || donor.bloodGroup,
+        unitsGiven: req.body.unitsGiven || 1,
+        creditsEarned: req.body.creditsEarned || 5,
+        hospitalName: req.body.hospitalName,
+        notes: req.body.notes,
+      });
+
+      res.json(donation);
+    } catch (error) {
+      console.error("Error verifying donation:", error);
+      res.status(400).json({ message: "Failed to verify donation" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

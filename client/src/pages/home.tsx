@@ -26,11 +26,16 @@ export default function Home() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Show message if not authenticated (no auto-login)
   // Redirect on logout
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       toast({
         title: "Unauthorized",
+        description: "Please sign in to continue.",
+        variant: "destructive",
+      });
+      return;
         description: "You are logged out. Redirecting...",
         variant: "destructive",
       });

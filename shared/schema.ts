@@ -183,7 +183,21 @@ export const insertDonationSchema = createInsertSchema(donations).omit({
   donationDate: z.coerce.date(),
 });
 
-// Types
+// NEW: Request responses table
+export const requestResponses = pgTable("request_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => bloodRequests.id),
+  donorId: varchar("donor_id").notNull().references(() => donors.id),
+  status: varchar("status", { enum: ["accepted", "rejected"] }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schema for responses
+export const insertRequestResponseSchema = createInsertSchema(requestResponses).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type Donor = typeof donors.$inferSelect;
@@ -193,3 +207,5 @@ export type InsertBloodRequest = z.infer<typeof insertBloodRequestSchema>;
 export type Donation = typeof donations.$inferSelect;
 export type InsertDonation = z.infer<typeof insertDonationSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type RequestResponse = typeof requestResponses.$inferSelect;
+export type InsertRequestResponse = z.infer<typeof insertRequestResponseSchema>;
